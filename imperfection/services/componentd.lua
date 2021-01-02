@@ -136,10 +136,11 @@ _G.component = {}
 function component.invoke(stream, field, ...)
   checkArg(1, stream, "table")
   checkArg(2, field, "string")
-  local mesg = ipcd.pack_formatted(field, ...)
+  local mesg = ipc.pack_formatted(field, ...)
+  stream:write("I")
   stream:write_formatted(mesg)
   local result = stream:read_formatted()
-  return unpack(result)
+  return ipc.unpack_formatted(result)
 end
 
 while true do

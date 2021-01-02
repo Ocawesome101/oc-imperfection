@@ -124,7 +124,7 @@ do
     local handle = assert(fs.open("/imperfection/services/"..s..".lua"))
     local data = ""
     repeat
-      local chunk = fs.read(handle, 64)
+      local chunk = fs.read(handle, math.huge)
       advance()
       data = data .. (chunk or "")
     until not chunk

@@ -4,7 +4,7 @@ local log, advance, gpu, ldsvc, bfs = ...
 
 log("SETPREF", "[rcd]")
 
-gpu.setForeground(0x004400)
+if gpu.maxDepth() > 1 then gpu.setForeground(0x008800) end
 log("Welcome to Imperfection!")
 gpu.setForeground(0x000000)
 

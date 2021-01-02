@@ -60,7 +60,7 @@ do
   local handle = assert(fs.open("/imperfection/kernel.lua"), "failed opening /imperfection/kernel.lua")
   local data = ""
   repeat
-    local chunk = fs.read(handle, 64)
+    local chunk = fs.read(handle, math.huge)
     data = data .. (chunk or "")
     advance()
   until not chunk

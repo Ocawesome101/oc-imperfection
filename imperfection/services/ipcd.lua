@@ -145,7 +145,7 @@ function api.pack_formatted(...)
   for i=1, args.n, 1 do
     local final = args[i]
     if type(final) == "string" then
-      final = string.format("\"%s\"")
+      final = string.format("\"%s\"", final)
     elseif type(final) == "table" then
       return nil, "table serialization is unsupported"
     else
@@ -157,7 +157,7 @@ function api.pack_formatted(...)
   return mesg
 end
 
-local function ipcd.unpack_formatted(data)
+function api.unpack_formatted(data)
   local args = {}
   for run in data:gmatch("[^\02]+") do -- delimited is \02
     local eval = load("return " .. run, "=unpack_field", "=bt", {})

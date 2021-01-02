@@ -32,11 +32,13 @@ local function create_handler(addr, file, mode)
   local function handler()
     local socket = ipc.listen(src_pid)
     while true do
-      local data = tonumber(socket:read(8))
+      local data = socket:read(8)
       if mode == "r" then
         fs:write("R")
         fs:write_formatted(fd)
         fs:write(data)
+        local fdat = fs:read_formatted()
+        socket:write_formatted(fdat)
       elseif mode == "w" or mode == "a" then
         local more = socket:read(#socket.rb)
         fs:write("W")
@@ -107,6 +109,7 @@ ipc.register("fsd")
 log("fsd: Registering with URLD")
 urld.register("fs", resolver)
 
+-- ex. loadfile("fs://eeb//bin/sh.lua")
 function _G.loadfile(file, mode, env)
   checkArg(1, file, "string")
   checkArg(2, mode, "string", "nil")
@@ -115,7 +118,9 @@ function _G.loadfile(file, mode, env)
   if not socket then
     return nil, err
   end
-  socket:write()
+  socket:write("99999999")
+  local data = socket:read_formatted()
+  return load(data, "="..file, mode or "bt", env or _G)
 end
 
 while true do
