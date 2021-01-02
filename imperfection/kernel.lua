@@ -92,12 +92,12 @@ do
       end
 
       local signal = table.pack(computer.pullSignal(timeout))
-      for i, t in pairs(threads) do
+      for i, t in ipairs(threads) do
         if signal.n > 0 or t.timeout <= uptime then
           current = i
           local result = table.pack(coroutine.resume(t.coro, table.unpack(signal)))
           if not result[1] then
-            computer.pushSignal("thread_died", i, tostring(result[2]))
+            computer.pushSignal("thread_died", i, t.name, tostring(result[2]))
             t.dead = true
           elseif type(result[2]) == "number" then
             t.timeout = computer.uptime() + result[2]

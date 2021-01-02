@@ -10,24 +10,29 @@ _G.component = nil
 local function concat(tbl)
   local ret = ""
   for i=1, tbl.n, 1 do
-    ret = ret .. tbl[i]
+    if type(tbl[i]) == "string" then
+      tbl[i] = string.format("\"%s\"", tbl[i])
+    end
+    ret = ret .. tostring(tbl[i])
     if i < tbl.n then ret = ret .. "\02" end
   end
   return ret
 end
 
-local function create_handler(addr, stream)
---  log("componentd: start handler for", addr)
-  local stream = stream
+local function create_handler(addr, from)
+  --log("componentd: start handler for", addr)
   local proxy = capi.proxy(addr)
   local open = {}
   local function handler()
---    log("componentd: start component handler")
+    --log("componentd: start component handler")
+    local stream = ipc.listen(from)
+    --log("comphandler", addr, "got connection from", from)
+    coroutine.yield(0.1)
     while true do
---      log("chandler: read cmd")
+      --log("chandler: read cmd")
       local command, err = stream:read(1)
---      log("chandler:", command, err)
-      if command == "Q" or not command then
+      --log("chandler", addr, command, err)
+      if command == "Q" or command == "" or not command then
         stream:close()
         break
       elseif command == "A" then
@@ -40,11 +45,15 @@ local function create_handler(addr, stream)
           local ok, ret = pcall(eval)
           if ok then
             args[#args + 1] = ret
+          else
+            --log("chandler:", ret)
           end
         end
-        local result = table.pack(capi.invoke(addr, args[1], table.unpack(args, 2)))
-        local ret = concat(result)
-        stream:write_formatted(ret)
+        if #args > 0 then
+          local result = table.pack(capi.invoke(addr, args[1], table.unpack(args, 2)))
+          local ret = concat(result)
+          stream:write_formatted(ret)
+        end
       elseif capi.type(addr) == "filesystem" then
         if command == "O" then
           local fname = stream:read_formatted()
@@ -77,44 +86,43 @@ local function create_handler(addr, stream)
       end
     end
   end
---  log("CD: starting component handler")
-  local pid = scheduler.create(handler, "chandler:"..addr)
+  --log("CD: starting component handler")
+  return scheduler.create(handler, "chandler:"..addr)
 end
 
 local opened = {}
 local open = function(ctype, new)
   checkArg(1, ctype, "string")
   checkArg(2, new, "boolean", "nil")
+  local requesting = scheduler.info().id
   local addr
   opened[ctype] = opened[ctype] or {}
-  if opened[ctype] and not new then
+  if not new then
     addr = next(opened[ctype])
-  else
+  end
+  if not addr then
+    --log("componentd: Got request for component of type", ctype, "from", requesting)
     local list = capi.list(ctype)
-    addr = true
-    while addr and opened[ctype][addr] or type(addr) == "boolean" do
-      addr = list()
-    end
-    if not addr then
-      return nil, "no component of type " .. ctype
+    for k, v in pairs(list) do
+      if not opened[ctype][k] then
+        addr = k
+        break
+      end
     end
     opened[ctype][addr] = true
   end
-  --[[if type(addr) ~= "string" then
-    return nil, "invalid address type"
-  end]]
-  local socket, err = ipc.open("componentd")
+  --log("componentd: Opening socket for component", addr, "on", scheduler.info().id)
+  local pid = create_handler(addr, scheduler.info().id)
+  local socket, err = ipc.open(pid)
   if not socket then
+    --log("componentd: failed opening socket to", pid, "because")
+    --log("           ", err)
     return nil, err
   end
-  --log("componentd-connect: opened connection; writing address")
-  socket:write(addr)
-  coroutine.yield(0.1)
+  --log("componentd: Returning socket for", addr, "to", scheduler.info().id)
+--  coroutine.yield(0.1)
   return socket
 end
-
-log("componentd: Registering with IPCD")
-ipc.register("componentd")
 
 -- component://gpu/new or component://gpu
 local function resolver(ctype, flags)
@@ -124,9 +132,16 @@ end
 log("componentd: Registering with URLD")
 urld.register("component", resolver)
 
+_G.component = {}
+function component.invoke(stream, field, ...)
+  checkArg(1, stream, "table")
+  checkArg(2, field, "string")
+  local mesg = ipcd.pack_formatted(field, ...)
+  stream:write_formatted(mesg)
+  local result = stream:read_formatted()
+  return unpack(result)
+end
+
 while true do
-  local stream = ipc.listen()
---  log("componentd: Accepted connection on", stream.half, " - reading address")
-  local addr = stream:read(36)
-  create_handler(addr, stream)
+  coroutine.yield()
 end

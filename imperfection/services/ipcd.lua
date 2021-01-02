@@ -18,7 +18,10 @@ local state = {}
 local streams = {}
 function _stream:read(n)
   checkArg(1, n, "number", "nil")
---  log("ipcd: read", n, "bytes from stream", self.id, "half", self.half)
+  --log("ipcd: read", n, "bytes from stream", self.id, "half", self.half)
+  if state[self.id] == "closed" then
+    return nil, "stream closed"
+  end
   if not n then
     while state[self.id] == "open" and not self.rb:find("\n") do
       coroutine.yield(1)
@@ -40,6 +43,9 @@ end
 function _stream:write(...)
   local args = table.pack(...)
   local mesg = ""
+  if state[self.id] == "closed" then
+    return nil, "stream closed"
+  end
   for i=1, args.n, 1 do
     mesg = string.format("%s%s", mesg, tostring(args[i]))
   end
@@ -47,7 +53,7 @@ function _stream:write(...)
 end
 
 function _stream:read_formatted()
-  return self:read(tonumber(self:read(4)))
+  return self:read(tonumber(self:read(8)))
 end
 
 function _stream:write_formatted(...)
@@ -56,7 +62,7 @@ function _stream:write_formatted(...)
   for i=1, args.n, 1 do
     mesg = string.format("%s%s", mesg, tostring(args[i]))
   end
-  local len = string.format("%04d", #mesg)
+  local len = string.format("%08d", #mesg)
   return self:write(len, mesg)
 end
 
@@ -104,7 +110,7 @@ end
 
 function api.open(dest)
   local id = math.random(1, 9999999999999999)
---  log("ipcd: Creating socket to", dest, "with id", id)
+  --log("ipcd: Creating socket to", dest, "with id", id, "from", scheduler.info().id)
   local msg, rid = api.recvmsg(dest, "open", id)
   if msg == "confirm_open" then
     if rid ~= id then
@@ -119,19 +125,56 @@ end
 
 function api.listen(id)
   local sig
-  repeat
-    sig = table.pack(coroutine.yield(1))
-  until sig[1] == "ipc_message" and (id and sig[2] == id or true) and sig[4] == "open"
---  log("ipcd: got request for opening socket from " .. sig[2])
+  if id then
+    repeat
+      sig = table.pack(coroutine.yield(1))
+    until sig[1] == "ipc_message" and sig[2] == id and sig[4] == "open"
+  else
+    repeat
+      sig = table.pack(coroutine.yield(1))
+    until sig[1] == "ipc_message" and sig[4] == "open"
+  end
+  --log("ipcd: got request for opening socket from " .. sig[2])
   api.sendmsg(sig[2], "confirm_open", sig[5])
   return create(sig[2], sig[5], 2)
+end
+
+function api.pack_formatted(...)
+  local args = table.pack(...)
+  local mesg = ""
+  for i=1, args.n, 1 do
+    local final = args[i]
+    if type(final) == "string" then
+      final = string.format("\"%s\"")
+    elseif type(final) == "table" then
+      return nil, "table serialization is unsupported"
+    else
+      final = tostring(final)
+    end
+    mesg = mesg .. final
+    if i < args.n then mesg = mesg .. "\02" end
+  end
+  return mesg
+end
+
+local function ipcd.unpack_formatted(data)
+  local args = {}
+  for run in data:gmatch("[^\02]+") do -- delimited is \02
+    local eval = load("return " .. run, "=unpack_field", "=bt", {})
+    local ok, ret = pcall(eval)
+    if ok then
+      args[#args + 1] = ret
+    end
+  end
+  return table.unpack(args)
 end
 
 _G.ipc = api
 
 log("ipcd: Registering with URLD")
 local function resolve(pid)
-  return ipc.open(pid)
+  checkArg(1, pid, "string", "number")
+  return ipc.open(tonumber(pid) or pid)
 end
 urld.register("ipc", resolve)
 
@@ -145,7 +188,7 @@ while true do
       sh = 1
     end
     if sid and sh and data and streams[sid] and streams[sid][sh] then
---      log("ipcd: Write", data, "to", sid, "half", sh, "state", state[sid])
+      --log("ipcd: Write", data, "to", sid, "half", sh, "state", state[sid])
       streams[sid][sh].rb = streams[sid][sh].rb .. tostring(data)
     end
   end

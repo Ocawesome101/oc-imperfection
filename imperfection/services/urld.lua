@@ -15,7 +15,7 @@ function api.register(proto, resolver)
   if registered[proto] then
     return true
   end
---  log("urld: Registering protocol", proto)
+  --log("urld: Registering protocol", proto)
   registered[proto] = resolver
   return true
 end
@@ -23,6 +23,9 @@ end
 -- URL -> socket or nil, err
 local function resolve(url)
   local proto, host, body = url:match("^(.+)://(.-)/(.+)$")
+  if not (proto and host and body) then
+    return nil, "invalid URL"
+  end
   if not registered[proto] then
     return nil, "protocol not registered: " .. proto
   end

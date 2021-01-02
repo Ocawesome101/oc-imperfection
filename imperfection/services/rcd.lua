@@ -15,24 +15,27 @@ local running = {
   componentd = true
 }
 
-local svc_path = "/imperfection/services/"
-log("Getting list of services from " .. svc_path)
-
-local files = bfs.list(svc_path)
-if files then
-  for i=1, #files, 1 do
-    local sname = files[i]:gsub("%.lua$", "")
-    if not running[sname] then
-      running[sname] = true
-      log("Starting service:", sname)
-      ldsvc(sname)
-    end
+-- TODO: make this configurable?
+local services = {
+  "fsd",
+  "ttyd",
+}
+for i=1, #services, 1 do
+  local sname = services[i]--:gsub("%.lua$", "")
+  if not running[sname] then
+    running[sname] = true
+    log("Starting service:", sname)
+    ldsvc(sname)
   end
 end
 
 log("Done")
 
 while true do
-  -- log(coroutine.yield())
+  --[[local sig = table.pack(coroutine.yield())
+  if sig[1] == "thread_died" then
+    log(table.unpack(sig, 4))
+  end--]]
+  --log(coroutine.yield())
   coroutine.yield()
 end

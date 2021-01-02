@@ -8,10 +8,6 @@ local mounts = {}
 repeat
   local socket, err = urld.open("component://filesystem/new")
   if socket then
-    -- we have to yield here, otherwise we steal the address from componentd,
-    --   which causes things to break badly.
-    -- at least, i think we do.  even if we don't, well, better safe than sorry.
-    coroutine.yield(0.1)
     socket:write("A")
     local addr = socket:read(36)
     log("fsd: Registering filesystem", addr)
@@ -28,45 +24,15 @@ local function concat_keys(t)
   return msg
 end
 
-local function concat(t)
-  local msg = ""
-  for i=1, t.n or #t, 1 do
-    msg = msg .. tostring(t[i]) .. "\02"
-  end
-  msg = msg:sub(1, -2)
-  return msg
-end
-
-local function unpack(data)
-  local args = {}
-  for run in data:gmatch("[^\02]+") do -- delimited is \02
-    local eval = load("return " .. run, "=unpack_field", "=bt", {})
-    local ok, ret = pcall(eval)
-    if ok then
-      args[#args + 1] = ret
-    end
-  end
-  return table.unpack(args)
-end
-
-local function call(sock, method, ...)
-  local args = table.pack(method, ...)
-  sock:write_formatted(concat(args))
-  local data = sock:read_formatted()
-  return unpack(data)
-end
-
 local function create_handler(addr, file, mode)
   local fs = mounts[addr]
-  fs:write("O")
-  fs:write_formatted(file)
-  fs:write(mode:sub(1,1))
+  fs:write("O", string.format("%08d", #file), file, (mode:sub(1,1)))
   local fd = fs:read_formatted()
   local src_pid = scheduler.info().id
   local function handler()
-    local socket = ipc.listen()
+    local socket = ipc.listen(src_pid)
     while true do
-      local data = tonumber(socket:read(4))
+      local data = tonumber(socket:read(8))
       if mode == "r" then
         fs:write("R")
         fs:write_formatted(fd)
@@ -83,10 +49,11 @@ local function create_handler(addr, file, mode)
   return ipc.open(pid)
 end
 
+local call = component.invoke
 local function resolver(addr, query)
   local data, socket
   if addr == "mounts" then
-    data = concat(mounts)
+    data = concat_keys(mounts)
   else
     for k, v in pairs(mounts) do
       if k:sub(1, #addr) == addr then
@@ -97,7 +64,7 @@ local function resolver(addr, query)
           data = ""
         end
         if op == "type" then
-          data = concat(table.pack(call(mounts[addr], "isDirectory", file)))
+          data = ipcd.pack_formatted(call(mounts[addr], "isDirectory", file))
         elseif op == "open" then
           -- e.g. fs://a4e32b9c/open?file=/bin/sh.lua?r
           local mode = file:sub(-1)
@@ -115,7 +82,7 @@ local function resolver(addr, query)
     end
   end
   if not socket then
-    local len = string.format("%04d", #data)
+    local len = string.format("%08d", #data)
     socket = {
       read = function(self)
         if len then
@@ -127,7 +94,8 @@ local function resolver(addr, query)
           data = nil
           return tmp
         end
-      end
+      end,
+      write = function() end
     }
   end
   return socket
@@ -139,6 +107,17 @@ ipc.register("fsd")
 log("fsd: Registering with URLD")
 urld.register("fs", resolver)
 
+function _G.loadfile(file, mode, env)
+  checkArg(1, file, "string")
+  checkArg(2, mode, "string", "nil")
+  checkArg(3, env, "table", "nil")
+  local socket, err = urld.open(file.."?r")
+  if not socket then
+    return nil, err
+  end
+  socket:write()
+end
+
 while true do
-  local socket = ipc.listen()
+  coroutine.yield()
 end
