@@ -5,7 +5,6 @@ log("fsd: Initializing")
 
 local mounts = {}
 
-log("fsd: Registering filesystems")
 repeat
   local socket, err = urld.open("component://filesystem/new")
   if socket then
@@ -52,27 +51,31 @@ end
 
 local function call(sock, method, ...)
   local args = table.pack(method, ...)
-  sock:write(args[1])
-  local len = sock:read(4)
-  len = tonumber(len)
-  local data = sock:read(len)
+  sock:write_formatted(concat(args))
+  local data = sock:read_formatted()
   return unpack(data)
 end
 
 local function create_handler(addr, file, mode)
   local fs = mounts[addr]
-  fs:write("O", string.format("%04d", #file), file, (mode:sub(1,1)))
-  local fd = fs:read(tonumber(fs:read(4)))
+  fs:write("O")
+  fs:write_formatted(file)
+  fs:write(mode:sub(1,1))
+  local fd = fs:read_formatted()
   local src_pid = scheduler.info().id
   local function handler()
     local socket = ipc.listen()
     while true do
       local data = tonumber(socket:read(4))
       if mode == "r" then
-        fs:write("R", string.format("%04d", #fd), fd, data)
+        fs:write("R")
+        fs:write_formatted(fd)
+        fs:write(data)
       elseif mode == "w" or mode == "a" then
         local more = socket:read(#socket.rb)
-        fs:write("W", string.format("%04d", #fd), fd, string.format("%04d", #more), more)
+        fs:write("W")
+        fs:write_formatted(fd)
+        fs:write_formatted(more)
       end
     end
   end
