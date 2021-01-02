@@ -25,7 +25,7 @@ end
 
 log("Starting Imperfect")
 log("Total system memory:", string.format("%dK", computer.totalMemory()/1024))
-
+log("SETPREF", "[knl]")
 log("Initializing scheduler")
 do
   local threads = {}
@@ -94,7 +94,8 @@ do
       local signal = table.pack(computer.pullSignal(timeout))
       for i, t in pairs(threads) do
         if signal.n > 0 or t.timeout <= uptime then
-          local result = table.pack(coroutine.resume(t.coro))
+          current = i
+          local result = table.pack(coroutine.resume(t.coro, table.unpack(signal)))
           if not result[1] then
             computer.pushSignal("thread_died", i, tostring(result[2]))
             t.dead = true
@@ -113,11 +114,13 @@ end
 
 do
   local start = {
+    "urld",
     "ipcd",
     "componentd",
     "rcd"
   }
-  local function load_service(s)
+  local load_service
+  load_service = function(s)
     local handle = assert(fs.open("/imperfection/services/"..s..".lua"))
     local data = ""
     repeat
@@ -128,7 +131,8 @@ do
     fs.close(handle)
     local func = assert(load(data, "="..s, "bt", _G))
     scheduler.create(function()
-      func(log, advance, gpu)
+      func(log, advance, gpu, s == "rcd" and load_service or nil,
+                                        s == "rcd" and fs or nil)
     end, s)
   end
   for i=1, #start, 1 do

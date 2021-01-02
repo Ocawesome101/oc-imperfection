@@ -1,0 +1,3 @@
+### PARAMETER-BASED IPC: AN IMPERFECT IMPLEMENTATION ###
+
+Parameter-based IPC should be performed by first writing 4 digits specifying the length of the data to be read, then the data itself.  The reverse should be performed to read it: read 4 digits, `tonumber` them, and then read that number of bytes from the IPC stream.

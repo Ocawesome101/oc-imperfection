@@ -1,7 +1,7 @@
 -- ipcd: manages cross-thread communication through signals --
 
 local log, advance, gpu = ...
-log("ipcd: initializing API")
+log("ipcd: Initializing API")
 
 local api = {}
 local computer = computer
@@ -15,9 +15,10 @@ end
 
 local _stream = {}
 local state = {}
-local streams
+local streams = {}
 function _stream:read(n)
   checkArg(1, n, "number", "nil")
+--  log("ipcd: read", n, "bytes from stream", self.id, "half", self.half)
   if not n then
     while state[self.id] == "open" and not self.rb:find("\n") do
       coroutine.yield(1)
@@ -40,9 +41,23 @@ function _stream:write(...)
   local args = table.pack(...)
   local mesg = ""
   for i=1, args.n, 1 do
-    mesg = string.format("%s%s", tostring(args[i]))
+    mesg = string.format("%s%s", mesg, tostring(args[i]))
   end
   api.sendmsg(self.dest, "stream_write", self.id, self.half, mesg)
+end
+
+function _stream:read_formatted()
+  return self:read(tonumber(self:read(4)))
+end
+
+function _stream:write_formatted(...)
+  local args = table.pack(...)
+  local mesg = ""
+  for i=1, args.n, 1 do
+    mesg = string.format("%s%s", mesg, tostring(args[i]))
+  end
+  local len = string.format("%04d", #mesg)
+  return self:write(len, mesg)
 end
 
 function _stream:close()
@@ -56,7 +71,11 @@ local function create(dest, id, half)
     dest = dest,
     half = half,
   }
-  return setmetatable(new, {__name = "pipe", __index = _stream, __metatable = {}})
+  state[id] = "open"
+  streams[id] = streams[id] or {}
+  streams[id][half] = new
+  setmetatable(new, {__name = "pipe", __index = _stream, __metatable = {}})
+  return new
 end
 
 function api.sendmsg(dest, ...)
@@ -85,29 +104,36 @@ end
 
 function api.open(dest)
   local id = math.random(1, 9999999999999999)
-  local msg, rid = api.sendmsg(desg, "open", id)
+--  log("ipcd: Creating socket to", dest, "with id", id)
+  local msg, rid = api.recvmsg(dest, "open", id)
   if msg == "confirm_open" then
     if rid ~= id then
-      return nil, "receiver returned invalid ID"
+      return nil, "receiver returned invalid ID (expected "..id..", got "..rid..")"
     end
-    streams[rid] = {}
-    streams[rid][1] = create(dest, rid, 1)
-    return streams[rid][1]
+    state[rid] = "open"
+    return create(dest, rid, 1)
+  elseif not msg then
+    return nil, rid
   end
 end
 
 function api.listen(id)
   local sig
   repeat
-    sig = table.pack(coroutine.yield())
-  until sig[1] == "ipc_message" and sig[2] == id and sig[4] == "open"
-  api.sendmsg(sig[3], "confirm_open", sig[5])
-  streams[sig[5]] = {}
-  streams[sig[5]][2] = create(sig[3], sig[5], 2)
-  return streams[sig[5]][2]
+    sig = table.pack(coroutine.yield(1))
+  until sig[1] == "ipc_message" and (id and sig[2] == id or true) and sig[4] == "open"
+--  log("ipcd: got request for opening socket from " .. sig[2])
+  api.sendmsg(sig[2], "confirm_open", sig[5])
+  return create(sig[2], sig[5], 2)
 end
 
 _G.ipc = api
+
+log("ipcd: Registering with URLD")
+local function resolve(pid)
+  return ipc.open(pid)
+end
+urld.register("ipc", resolve)
 
 while true do
   local sig = table.pack(coroutine.yield())
@@ -119,6 +145,7 @@ while true do
       sh = 1
     end
     if sid and sh and data and streams[sid] and streams[sid][sh] then
+--      log("ipcd: Write", data, "to", sid, "half", sh, "state", state[sid])
       streams[sid][sh].rb = streams[sid][sh].rb .. tostring(data)
     end
   end
