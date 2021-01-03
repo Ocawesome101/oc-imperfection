@@ -135,7 +135,7 @@ function commands:flush()
   while #self.wb > 0 do
     self:check_cursor()
     local ln = self.wb:sub(1, self.w - self.cx + 1)
-    component.invoke(self.gpu, "set", self.cx, self.cy, ln)
+    component.invoke(self.gpu, "set", self.cx, self.cy, ln or "")
     self.cx = self.cx + #ln
     self.wb = self.wb:sub(#ln + 1)
   end
@@ -219,7 +219,7 @@ local function start(set)
   local function key_handler()
     while true do
       local sig = table.pack(coroutine.yield())
-      if stream and sig[1] == "key_down" and keyboards[sig[2]] then
+      if stream and sig[1] == "key_down" then--and keyboards[sig[2]] then
         local char = string.char(sig[3])
         local code = sig[4]
         if char == "\13" then char = "\10" end

@@ -41,8 +41,8 @@ ldsvc("sh")
 while true do
   --[[local sig = table.pack(coroutine.yield())
   if sig[1] == "thread_died" then
-    log(table.unpack(sig, 4))
+    log(table.unpack(sig, 3))
   end--]]
   --log(coroutine.yield())
-  coroutine.yield()
+  --coroutine.yield()
 end
