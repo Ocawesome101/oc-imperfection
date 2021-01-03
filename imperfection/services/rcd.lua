@@ -43,6 +43,6 @@ while true do
   if sig[1] == "thread_died" then
     log(table.unpack(sig, 3))
   end--]]
-  --log(coroutine.yield())
-  coroutine.yield()
+  log(coroutine.yield())
+  --coroutine.yield()
 end

@@ -22,18 +22,13 @@ local function nl()
 end
 local function read()
   local buffer = ""
-  local x, y = invoke("G", "cpos")
   local in_esc = false
   repeat
-    x, y = invoke("G", "cpos")
     local char = invoke("R")
     if string.byte(char) > 31 and string.byte(char) < 127 and not in_esc then
       buffer = buffer .. char
-      if #buffer > 1 then
-        invoke("C", x - 1, y)
-      end
-      invoke("W", char.."_")
     elseif char == "\8" and #buffer > 0 then
+      x, y = invoke("G", "cpos")
       buffer = buffer:sub(1, -2)
       if x == 1 then
         x = w
