@@ -6,7 +6,7 @@ log("SETPREF", "[rcd]")
 
 if gpu.maxDepth() > 1 then gpu.setForeground(0x008800) end
 log("Welcome to Imperfection!")
-gpu.setForeground(0x000000)
+gpu.setForeground(0xD29A01)
 
 local running = {
   rcd = true,
@@ -30,6 +30,13 @@ for i=1, #services, 1 do
 end
 
 log("Done")
+
+-- give services time to start
+for i=1, 30, 1 do
+  --log(coroutine.yield(0.1))
+  coroutine.yield(0.1)
+end
+ldsvc("sh")
 
 while true do
   --[[local sig = table.pack(coroutine.yield())

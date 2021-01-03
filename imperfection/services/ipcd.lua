@@ -26,7 +26,7 @@ function _stream:read(n)
     while state[self.id] == "open" and not self.rb:find("\n") do
       coroutine.yield(1)
     end
-    local n = self.rb:find("\n") or #rb
+    local n = self.rb:find("\n") or #self.rb
     local ret = self.rb:sub(1, n)
     self.rb = self.rb:sub(#ret + 1)
     return ret
@@ -125,18 +125,21 @@ end
 
 function api.listen(id)
   local sig
+  local current = scheduler.info().id
   if id then
     repeat
       sig = table.pack(coroutine.yield(1))
-    until sig[1] == "ipc_message" and sig[2] == id and sig[4] == "open"
+    until sig[1] == "ipc_message" and sig[2] == id and sig[3] == current and sig[4] == "open"
   else
     repeat
       sig = table.pack(coroutine.yield(1))
-    until sig[1] == "ipc_message" and sig[4] == "open"
+    until sig[1] == "ipc_message" and sig[3] == current and sig[4] == "open"
   end
   --log("ipcd: got request for opening socket from " .. sig[2])
   api.sendmsg(sig[2], "confirm_open", sig[5])
-  return create(sig[2], sig[5], 2)
+  local new = create(sig[2], sig[5], 2)
+  new.from = sig[2]
+  return new
 end
 
 function api.pack_formatted(...)
@@ -147,7 +150,25 @@ function api.pack_formatted(...)
     if type(final) == "string" then
       final = string.format("\"%s\"", final)
     elseif type(final) == "table" then
-      return nil, "table serialization is unsupported"
+      local tmp = "{"
+      -- this Should(tm) work
+      for k, v in pairs(final) do
+        if type(v) == "string" then
+          v = v:gsub("\"+", "\\\"")
+          v = string.format("\"%s\"", v)
+        else
+          v = tostring(v)
+        end
+        if type(k) == "string" then
+          k = k:gsub("\"+", "\\\"")
+          k = string.format("\"%s\"", k)
+        else
+          k = tostring(k)
+        end
+        tmp = string.format("%s[%s]=%s,", tmp, k, v)
+      end
+      tmp = tmp .. "}"
+      final = tmp
     else
       final = tostring(final)
     end
@@ -157,16 +178,35 @@ function api.pack_formatted(...)
   return mesg
 end
 
+local function deser(v)
+  if tonumber(v) then
+    return true, tonumber(v)
+  elseif v == "true" then
+    return true, true
+  elseif v == "false" then
+    return true, false
+  elseif v:match("^\"(.+)\"$") then
+    return true, (v:sub(2, -2))
+  else
+    local ok, err = load("return " .. v, "=deserializing", "bt", {})
+    if not ok then
+      return nil, err
+    end
+    return pcall(ok)
+  end
+end
+
 function api.unpack_formatted(data)
   local args = {}
-  for run in data:gmatch("[^\02]+") do -- delimited is \02
-    local eval = load("return " .. run, "=unpack_field", "=bt", {})
-    local ok, ret = pcall(eval)
+  local n = 1
+  for val in data:gmatch("[^\02]+") do -- delimited is \02
+    local ok, ret = deser(val)
     if ok then
-      args[#args + 1] = ret
+      args[n] = ret
+      n = n + 1
     end
   end
-  return table.unpack(args)
+  return table.unpack(args, 1, n)
 end
 
 _G.ipc = api

@@ -22,6 +22,7 @@ end
 local function create_handler(addr, from)
   --log("componentd: start handler for", addr)
   local proxy = capi.proxy(addr)
+  -- apparently file handles are userdata, so we need to keep a map of them here
   local open = {}
   local function handler()
     --log("componentd: start component handler")
@@ -44,44 +45,25 @@ local function create_handler(addr, from)
           local eval = load("return " .. run, "=comp_arg", "=bt", {})
           local ok, ret = pcall(eval)
           if ok then
+            if ret and open[ret] then
+              ret = open[ret]
+            end
             args[#args + 1] = ret
           else
             --log("chandler:", ret)
           end
         end
         if #args > 0 then
-          local result = table.pack(capi.invoke(addr, args[1], table.unpack(args, 2)))
-          local ret = concat(result)
-          stream:write_formatted(ret)
-        end
-      elseif capi.type(addr) == "filesystem" then
-        if command == "O" then
-          local fname = stream:read_formatted()
-          local mode = stream:read(1)
-          local handle, err = capi.invoke(addr, "open", fname, mode)
-          local fdesc = math.random(1, 9999999999999999999)
-          open[fdesc] = fd
-          fdesc = tostring(fdesc)
-          stream:write_formatted(fdesc)
-        elseif command == "R" or command == "W" or command == "C" then
-          local data = tonumber(stream:read_formatted())
-          if command == "C" then
-            capi.invoke(addr, "close", open[fdesc])
-            open[fdesc] = nil
-          else
-            local rlen = tonumber(stream:read(4))
-            if command == "R" then
-              local data = ""
-              repeat
-                local chunk = capi.invoke(addr, "read", rlen - #data)
-                data = data .. (chunk or "")
-              until #data >= rlen or not chunk
-              stream:write_formatted(data)
-            elseif command == "W" then
-              local data = stream:read(rlen)
-              capi.invoke(addr, "write", data)
+          local ret = table.pack(capi.invoke(addr, args[1], table.unpack(args, 2)))
+          for i=1, ret.n, 1 do
+            if type(ret[i]) == "userdata" or
+              (type(ret[i]) == "table" and ret[i].type == "userdata") then
+              local fhandle = math.random(1, 999999999999)
+              open[fhandle] = ret[i]
+              ret[i] = fhandle
             end
           end
+          stream:write_formatted(ipc.pack_formatted(table.unpack(ret, 1, ret.n)))
         end
       end
     end
@@ -109,6 +91,9 @@ local open = function(ctype, new)
         break
       end
     end
+    if not addr then
+      return nil, "no component of type " .. ctype
+    end
     opened[ctype][addr] = true
   end
   --log("componentd: Opening socket for component", addr, "on", scheduler.info().id)
@@ -126,6 +111,13 @@ end
 
 -- component://gpu/new or component://gpu
 local function resolver(ctype, flags)
+  for k, v in capi.list() do
+    if k:sub(1, #ctype) == ctype then
+      local pid = create_handler(k, scheduler.info().id)
+      local socket, err = ipc.open(pid)
+      return socket, err
+    end
+  end
   return open(ctype, flags == "new")
 end
 

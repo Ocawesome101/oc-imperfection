@@ -25,8 +25,7 @@ repeat
       screen = screen
     }
     component.invoke(gpu, "bind", screenaddr)
-    component.invoke(gpu, "setForeground", 0x000000)
-    component.invoke(gpu, "setBackground", 0xFFFFFF)
+    component.invoke(gpu, "setForeground", 0xD29A01)
     screen.rb = ""
   else
     if gpu then gpu:close() end
@@ -96,8 +95,8 @@ function commands:m(p)
   p[1] = p[1] or 0
   for _, a in ipairs(p) do
     if a == 0 then
-      self.fg = colors[1]
-      self.bg = colors[8]
+      self.fg = colors[8]
+      self.bg = colors[1]
     elseif a > 30 and a < 38 then
       self.fg = colors[a - 30]
     elseif a > 40 and a < 48 then
@@ -107,12 +106,12 @@ function commands:m(p)
 end
 
 function commands:toggle()
-  local ch, fg, bg = component.invoke(self.gpu, "get", self.cx, self.cy)
+  --[[local ch, fg, bg = component.invoke(self.gpu, "get", self.cx, self.cy)
   component.invoke(self.gpu, "setForeground", bg)
   component.invoke(self.gpu, "setBackground", fg)
   component.invoke(self.gpu, "set", self.cx, self.cy, ch)
   component.invoke(self.gpu, "setForeground", self.fg)
-  component.invoke(self.gpu, "setBackground", self.bg)
+  component.invoke(self.gpu, "setBackground", self.bg)]]
 end
 
 function commands:scroll()
@@ -121,7 +120,7 @@ function commands:scroll()
 end
 
 function commands:check_cursor()
-  if self.cx > w then
+  if self.cx > self.w then
     self.cx, self.cy = 1, self.cy + 1
   end
   if self.cy >= self.h then
@@ -138,43 +137,53 @@ function commands:flush()
     local ln = self.wb:sub(1, self.w - self.cx + 1)
     component.invoke(self.gpu, "set", self.cx, self.cy, ln)
     self.cx = self.cx + #ln
+    self.wb = self.wb:sub(#ln + 1)
   end
 end
+
+local key_aliases = {
+  [200] = "\27[A",
+  [208] = "\27[B",
+  [205] = "\27[C",
+  [203] = "\27[D"
+}
 
 local function start(set)
   local gpu = set.gpu
   local screen = set.screen
   local w, h = component.invoke(gpu, "maxResolution")
+  local keyboards = component.invoke(screen, "getKeyboards")
+  for k, v in pairs(keyboards) do
+    keyboards[v] = true
+  end
   local vt_state = {
     w = w,
     h = h,
     cx = 1,
     cy = 1,
     wb = "",
-    fg = 0x000000,
-    bg = 0xFFFFFF,
+    bg = 0x000000,
+    fg = 0xFFFFFF,
     gpu = gpu,
     mode = 0, -- 0 regular, 1 got ESC, 2 in sequence
     screen = screen,
   }
+  component.invoke(gpu, "setForeground", vt_state.fg)
+  component.invoke(gpu, "setBackground", vt_state.bg)
   local nb = ""
   setmetatable(vt_state, {__index = commands})
+  local stream
   local function handler()
-    local stream = ipc.listen()
+    stream = ipc.listen()
+    --log("vth: Opened stream from", stream.from)
     while true do
       local data = stream:read(1)
       if not data then break end
-      self:toggle()
       if vt_state.mode == 0 then
         if data == "\27" then
-          vt_state:toggle()
-          vt_state:flush()
-          vt_state:toggle()
           vt_state.mode = 1
-        elseif data == "\n" then
-          vt_state:toggle()
+        elseif data == "\n" or data == "\13" then
           vt_state:flush()
-          vt_state:toggle()
           vt_state.cx = 1
           vt_state:B({})
         elseif data == "\t" then
@@ -182,6 +191,7 @@ local function start(set)
         else
           vt_state.wb = vt_state.wb .. data
         end
+        vt_state:flush()
       elseif vt_state.mode == 1 then
         if data == "[" then
           vt_state.mode = 2
@@ -199,13 +209,34 @@ local function start(set)
           end
           nb = ""
           vt_state:toggle()
-          pcall(commands[data], args)
+          pcall(commands[data], vt_state, args)
           vt_state:toggle()
         end
       end
     end
   end
+
+  local function key_handler()
+    while true do
+      local sig = table.pack(coroutine.yield())
+      if stream and sig[1] == "key_down" and keyboards[sig[2]] then
+        local char = string.char(sig[3])
+        local code = sig[4]
+        if char == "\13" then char = "\10" end
+        if char == "\0" then
+          if aliases[code] then
+            stream:write(aliases[code])
+            stream.rb = stream.rb .. aliases[code] .. "\2"
+          end
+        else
+          stream:write(char)
+          stream.rb = stream.rb .. char .. "\2"
+        end
+      end
+    end
+  end
   local pid = scheduler.create(handler, "vt:"..(tostring(set):gsub("table: ", "") or "nil"))
+  scheduler.create(key_handler, "vt-kbd:"..(tostring(set):gsub("table: ", "") or "nil"))
   return pid
 end
 
@@ -214,21 +245,24 @@ local used = {}
 for i=1, #sets, 1 do
   log("ttyd: Registering", sets[i].gpu.address:sub(1,4), "+", sets[i].screen.address:sub(1,4))
   local new = start(sets[i])
+  log("ttyd: Started as", new)
   handlers[#handlers + 1] = new
 end
-
-log("ttyd: Done")
 
 -- vt://1/ or vt://new/
 local function resolver(new)
   new = tonumber(new) or new
+  --log("ttyd: Got request for", new)
   if new == "new" then
     local n = 0
     repeat
       n = n + 1
     until n > #handlers or not used[n]
     used[n] = true
-    return handlers[n], "no such terminal"
+    if not handlers[n] then
+      return nil, "no such terminal"
+    end
+    return ipc.open(handlers[n])
   elseif type(new) == "number" and handlers[new] then
     used[new] = true
     return ipc.open(handlers[new])

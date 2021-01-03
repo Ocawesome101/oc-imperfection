@@ -15,7 +15,7 @@ repeat
   end
 until not socket
 
-local function concat_keys(t)
+--[[local function concat_keys(t)
   local msg = ""
   for k, v in pairs(t) do
     msg = msg .. k .. "\02"
@@ -30,7 +30,7 @@ local function create_handler(addr, file, mode)
   local fd = fs:read_formatted()
   local src_pid = scheduler.info().id
   local function handler()
-    local socket = ipc.listen(src_pid)
+    local socket = ipc.listen()--src_pid)
     while true do
       local data = socket:read(8)
       if mode == "r" then
@@ -48,7 +48,7 @@ local function create_handler(addr, file, mode)
     end
   end
   local pid = scheduler.create(handler, "fshandler:"..file..":"..mode)
-  return ipc.open(pid)
+  return assert(ipc.open(pid))
 end
 
 local call = component.invoke
@@ -107,19 +107,30 @@ log("fsd: Registering with IPCD")
 ipc.register("fsd")
 
 log("fsd: Registering with URLD")
-urld.register("fs", resolver)
+urld.register("fs", resolver)]]
 
--- ex. loadfile("fs://eeb//bin/sh.lua")
-function _G.loadfile(file, mode, env)
-  checkArg(1, file, "string")
+-- ex. loadfile("eeb//bin/sh.lua")
+function _G.loadfile(path, mode, env)
+  checkArg(1, path, "string")
   checkArg(2, mode, "string", "nil")
   checkArg(3, env, "table", "nil")
-  local socket, err = urld.open(file.."?r")
-  if not socket then
+  local fs, file = path:match("^(.-)/(.+)$")
+  if not (fs and file) then
+    return nil, "invalid filespec: " .. file
+  end
+  local fsc, err = urld.open("component://"..fs)
+  if not fsc then
     return nil, err
   end
-  socket:write("99999999")
-  local data = socket:read_formatted()
+  local handle, err = component.invoke(fsc, "open", file)
+  if not handle then
+    return nil, err
+  end
+  local data, err = component.invoke(fsc, "read", handle, 99999999)
+  component.invoke(fsc, "close", handle)
+  if not data then
+    return nil, err
+  end
   return load(data, "="..file, mode or "bt", env or _G)
 end
 

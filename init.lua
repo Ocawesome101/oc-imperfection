@@ -30,16 +30,8 @@ do
       bgpu = gpu
       gpu.bind(screen)
       local w, h = gpu.maxResolution()
-      if gpu.maxDepth() > 1 then
-        for i=1, 255, 1 do
-          local n = i // 1
-          local col = (n << 16) + (n << 8) + n
-          gpu.setBackground(col)
-          gpu.fill(1, 1, w, h, " ")
-        end
-      end
-      gpu.setForeground(0x000000)
-      gpu.setBackground(0xFFFFFF)
+      gpu.setForeground(0xD29A01)
+      gpu.setBackground(0x000000)
       gpu.setResolution(w, h)
       gpu.fill(1, 1, w, h, " ")
       gpu.set(1, 1, msg.."...\\")

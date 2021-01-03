@@ -23,9 +23,13 @@ end
 -- URL -> socket or nil, err
 local function resolve(url)
   local proto, host, body = url:match("^(.+)://(.-)/(.+)$")
-  if not (proto and host and body) then
+  if not (proto and host) then
+    proto, host = url:match("^(.+)://(.+)$")
+  end
+  if not (proto and host) then
     return nil, "invalid URL"
   end
+  body = body or ""
   if not registered[proto] then
     return nil, "protocol not registered: " .. proto
   end
