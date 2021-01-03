@@ -9,6 +9,12 @@ if not sh then
   while true do coroutine.yield() end
 end
 
-scheduler.create(sh, "shell")
+repeat
+  local term, err = urld.open("vt://new")
+  if term then
+    scheduler.info().state.term = term
+    scheduler.create(sh, "shell")
+  end
+until not term
 
 while true do coroutine.yield() end

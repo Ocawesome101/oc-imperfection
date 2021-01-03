@@ -6,7 +6,7 @@ log("SETPREF", "[rcd]")
 
 if gpu.maxDepth() > 1 then gpu.setForeground(0x008800) end
 log("Welcome to Imperfection!")
-gpu.setForeground(0xD29A01)
+gpu.setForeground(0xFF8100)
 
 local running = {
   rcd = true,
@@ -18,7 +18,7 @@ local running = {
 -- TODO: make this configurable?
 local services = {
   "fsd",
-  "ttyd",
+  "vtd",
 }
 for i=1, #services, 1 do
   local sname = services[i]--:gsub("%.lua$", "")
@@ -33,8 +33,8 @@ log("Done")
 
 -- give services time to start
 for i=1, 30, 1 do
-  --log(coroutine.yield(0.1))
-  coroutine.yield(0.1)
+  --log(coroutine.yield(0))
+  coroutine.yield(0)
 end
 ldsvc("sh")
 
@@ -44,5 +44,5 @@ while true do
     log(table.unpack(sig, 3))
   end--]]
   --log(coroutine.yield())
-  --coroutine.yield()
+  coroutine.yield()
 end

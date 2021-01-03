@@ -44,6 +44,11 @@ do
       state = {},
       dead = false
     }
+    if threads[current] then
+      for k, v in pairs(threads[current].state) do
+        new.state[k] = v
+      end
+    end
     last = last + 1
     threads[last] = new
     return last

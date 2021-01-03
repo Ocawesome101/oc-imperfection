@@ -30,7 +30,7 @@ do
       bgpu = gpu
       gpu.bind(screen)
       local w, h = gpu.maxResolution()
-      gpu.setForeground(0xD29A01)
+      gpu.setForeground(0xFF8100)
       gpu.setBackground(0x000000)
       gpu.setResolution(w, h)
       gpu.fill(1, 1, w, h, " ")
