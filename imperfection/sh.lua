@@ -14,6 +14,12 @@ local function invoke(method, ...)
 end
 
 local w, h = invoke("G", "size")
+
+local function nl()
+  local x, y = invoke("G", "cpos")
+  invoke("C", 1, y + 1)
+  invoke("W", " ")
+end
 local function read()
   local buffer = ""
   local x, y = invoke("G", "cpos")
@@ -48,8 +54,8 @@ local function read()
       in_esc = false
     end
   until char == "\13"
-  invoke("C", 1, y + 1)
-  invoke("W", " ")
+  nl()
+  return buffer
 end
 
 invoke("C", 1, 1)
@@ -57,4 +63,15 @@ invoke("L", 1, 1, w, h, " ")
 while true do
   invoke("W", "sh> ")
   local input = read()
+  local ok, err = load(input, "=user_input", "bt", _G)
+  if not ok then
+    invoke("W", err)
+  else
+    local result = table.pack(pcall(ok))
+    for i=1, result.n, 1 do
+      invoke("W", tostring(result[i]))
+      nl()
+    end
+  end
+  nl()
 end
