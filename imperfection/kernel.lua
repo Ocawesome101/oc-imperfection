@@ -26,6 +26,32 @@ end
 log("Starting Imperfect")
 log("Total system memory:", string.format("%dK", computer.totalMemory()/1024))
 log("SETPREF", "[knl]")
+log("Wrapping computer.{push,pull}Signal")
+do
+  local psh, pop = computer.pushSignal, computer.pullSignal
+  local sig_buf = {}
+  function computer.pullSignal(timeout)
+    local start = computer.uptime()
+    local max = start + (timeout or math.huge)
+    while computer.uptime() <= max do
+      if #sig_buf > 0 then
+        return table.unpack(table.remove(sig_buf, 1))
+      else
+        local signal = table.pack(pop(0.05))
+        if signal.n > 0 then
+          return table.unpack(signal)
+        end
+      end
+    end
+    if #sig_buf > 0 then
+      return table.unpack(table.remove(sig_buf, 1))
+    end
+  end
+  function computer.pushSignal(...)
+    sig_buf[#sig_buf + 1] = table.pack(...)
+    return true
+  end
+end
 log("Initializing scheduler")
 do
   local threads = {}
