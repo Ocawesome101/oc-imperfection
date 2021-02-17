@@ -53,8 +53,9 @@ local function open(set, n)
       local sig = table.pack(coroutine.yield())
       if sig[1] == "key_down" then
         local c = string.char(sig[3] > 0 and sig[3] or sig[4])
-        if sig[3] == 0 then cmd_obj.rb = cmd_obj.rb .. "\0" end
-        cmd_obj.rb = cmd_obj.rb .. c
+        if sig[3] == 10 or sig[3] == 8 or (sig[3] > 31 and sig[3] < 127) then
+          cmd_obj.rb = cmd_obj.rb .. c
+        end
       end
     end
   end

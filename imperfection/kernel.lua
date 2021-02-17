@@ -31,21 +31,10 @@ do
   local psh, pop = computer.pushSignal, computer.pullSignal
   local sig_buf = {}
   function computer.pullSignal(timeout)
-    local start = computer.uptime()
-    local max = start + (timeout or math.huge)
-    while computer.uptime() <= max do
-      if #sig_buf > 0 then
-        return table.unpack(table.remove(sig_buf, 1))
-      else
-        local signal = table.pack(pop(0.05))
-        if signal.n > 0 then
-          return table.unpack(signal)
-        end
-      end
-    end
     if #sig_buf > 0 then
       return table.unpack(table.remove(sig_buf, 1))
     end
+    return pop(timeout)
   end
   function computer.pushSignal(...)
     sig_buf[#sig_buf + 1] = table.pack(...)

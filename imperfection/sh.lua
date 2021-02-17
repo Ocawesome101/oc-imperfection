@@ -53,12 +53,16 @@ local function read()
   return buffer
 end
 
+local env = setmetatable({
+  invoke = invoke
+}, {__index = _G})
+
 invoke("C", 1, 1)
 invoke("L", 1, 1, w, h, " ")
 while true do
   invoke("W", "sh> ")
   local input = read()
-  local ok, err = load(input, "=user_input", "bt", _G)
+  local ok, err = load(input, "=user_input", "bt", env)
   if not ok then
     invoke("W", err)
   else
